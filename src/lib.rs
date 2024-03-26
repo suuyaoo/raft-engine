@@ -12,7 +12,6 @@
 // limitations under the License.
 
 #![feature(shrink_to)]
-#![feature(btree_drain_filter)]
 #![feature(generic_associated_types)]
 #![feature(test)]
 
