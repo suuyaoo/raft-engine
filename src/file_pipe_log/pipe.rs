@@ -1,13 +1,15 @@
 // Copyright (c) 2017-present, PingCAP, Inc. Licensed under Apache-2.0.
 
+extern crate libc;
+
 use std::collections::VecDeque;
 use std::fs::{self, File};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::os::unix::io::AsRawFd;
 
 use crossbeam::utils::CachePadded;
 use fail::fail_point;
-use fs2::FileExt;
 use log::{error, warn};
 use parking_lot::{Mutex, MutexGuard, RwLock};
 
@@ -20,6 +22,29 @@ use crate::{Error, Result};
 
 use super::format::{lock_file_path, FileNameExt};
 use super::log_file::{build_file_reader, build_file_writer, LogFd, LogFileWriter};
+
+pub trait FileExt {
+    /// Locks the file for shared usage, or returns a an error if the file is
+    /// currently locked (see `lock_contended_error`).
+    fn try_lock_exclusive(&self) -> std::io::Result<()>;
+
+    /// Unlocks the file.
+    fn unlock(&self) -> std::io::Result<()>;
+}
+
+impl FileExt for File {
+    fn try_lock_exclusive(&self) -> std::io::Result<()> {
+        let flag = libc::LOCK_EX | libc::LOCK_NB;
+        let ret = unsafe { libc::flock(self.as_raw_fd(), flag) };
+        if ret < 0 { Err(std::io::Error::last_os_error()) } else { Ok(()) }
+    }
+
+    fn unlock(&self) -> std::io::Result<()> {
+        let flag = libc::LOCK_UN;
+        let ret = unsafe { libc::flock(self.as_raw_fd(), flag) };
+        if ret < 0 { Err(std::io::Error::last_os_error()) } else { Ok(()) }
+    }
+}
 
 struct FileCollection {
     first_seq: FileSeq,
